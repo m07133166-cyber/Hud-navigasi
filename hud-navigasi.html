@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>HUD Navigasi</title>
+<style>
+:root{--hud:#5dff9a;--ink:#e8f6ee;--bg:#000;color-scheme:dark;box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:#000;color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;overflow:hidden;touch-action:manipulation;user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.fab{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:12px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(93,255,154,.45);background:rgba(0,12,6,.6);color:var(--hud);font-size:20px;cursor:pointer;z-index:6}
+.ov,.panel{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:14px;padding:24px;overflow-y:auto;background:rgba(0,6,3,.95);z-index:10;text-align:center}
+.ov[hidden],.panel[hidden]{display:none}
+h1{font-size:clamp(30px,9vw,52px);letter-spacing:.14em;color:var(--hud);font-weight:700;text-shadow:0 0 22px rgba(93,255,154,.5)}
+h1 small{display:block;font-size:.3em;letter-spacing:.3em;color:#7aa890;margin-top:8px;font-weight:500;text-shadow:none}
+p{max-width:40ch;line-height:1.5;color:#9cc4ae;font-size:15px}
+.warn{border:1px solid rgba(255,190,70,.5);color:#ffd890;border-radius:10px;padding:10px 14px;font-size:14px;max-width:40ch}
+button.cta{font-size:18px;font-weight:700;letter-spacing:.1em;color:#00160a;background:var(--hud);border:0;border-radius:10px;padding:14px 34px;cursor:pointer;box-shadow:0 0 26px rgba(93,255,154,.4)}
+button.ghost{font-size:15px;font-weight:600;color:var(--hud);background:transparent;border:1px solid rgba(93,255,154,.5);border-radius:10px;padding:11px 20px;cursor:pointer}
+button.ghost:active,button.cta:active{transform:scale(.97)}
+.panel{align-items:stretch;text-align:left;max-width:520px;margin:0 auto;background:rgba(0,8,4,.97);gap:10px;justify-content:flex-start}
+.panel h2{font-size:20px;letter-spacing:.1em;color:var(--hud);text-align:center}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(93,255,154,.18);border-radius:10px;font-size:15px}
+.row label{flex:1}
+.row small{display:block;color:#7aa890;font-size:12px;margin-top:2px}
+.sw{display:flex;gap:8px}.sw i{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer}.sw i.on{border-color:#fff}
+input[type=range]{width:150px;accent-color:#5dff9a}
+input[type=checkbox]{width:22px;height:22px;accent-color:#5dff9a}
+textarea,input[type=text]{width:100%;background:#041208;border:1px solid rgba(93,255,154,.3);border-radius:8px;color:var(--ink);padding:9px;font-size:14px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+#msg{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);max-width:90vw;background:rgba(0,14,8,.85);border:1px solid rgba(93,255,154,.4);border-radius:10px;padding:8px 14px;font-size:14px;color:var(--hud);z-index:7;opacity:0;pointer-events:none;transition:opacity .3s;text-align:center}
+#msg.on{opacity:1}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #fff;outline-offset:2px}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Tampilan HUD navigasi"></canvas>
+<button class="fab" id="gear" aria-label="Pengaturan">⚙</button>
+<div id="msg"></div>
+
+<div class="ov" id="start">
+  <h1>HUD NAVIGASI<small>TAMPILAN BELOKAN BERGAYA PESAWAT TEMPUR</small></h1>
+  <p>Letakkan HP di dasbor, nyalakan Mode Cermin, lalu tampilan hijau akan terpantul di kaca depan saat malam. Berisi ikon belokan, jarak, jalur rute dalam perspektif, kecepatan, kompas, dan peta kecil.</p>
+  <p class="warn">Atur rute dan pengaturan saat kendaraan berhenti. Jangan mengoperasikan HP sambil menyetir. Aplikasi ini alat bantu, bukan pengganti rambu dan kewaspadaan Anda.</p>
+  <button class="cta" id="go">MULAI DENGAN GPS</button>
+  <button class="ghost" id="demo">COBA MODE DEMO (SIMULASI)</button>
+</div>
+
+<div class="panel" id="panel" hidden>
+  <h2>PENGATURAN</h2>
+  <div class="row"><label>Mode cermin (HUD terbalik)<small>Untuk dipantulkan ke kaca depan. Peta kecil tidak ikut dibalik.</small></label><input type="checkbox" id="optMirror"></div>
+  <div class="row"><label>Peta kecil</label><input type="checkbox" id="optMap" checked></div>
+  <div class="row"><label>Suara pemandu<small>Bahasa Indonesia, bila didukung perangkat.</small></label><input type="checkbox" id="optVoice" checked></div>
+  <div class="row"><label>Warna HUD</label><div class="sw" id="sw"></div></div>
+  <div class="row"><label>Kecerahan</label><input type="range" id="optBri" min="25" max="100" value="100"></div>
+  <div class="row"><label>Layar tetap menyala</label><input type="checkbox" id="optWake" checked></div>
+  <h2 style="margin-top:6px">RUTE</h2>
+  <div class="btns"><button class="ghost" id="bDemoRoute">Rute demo</button><button class="ghost" id="bFile">Impor GPX / GeoJSON</button><button class="ghost" id="bClear">Hapus rute</button></div>
+  <input type="file" id="file" accept=".gpx,.json,.geojson,.txt,application/gpx+xml,application/json" hidden>
+  <label style="font-size:14px;color:#9cc4ae">Tempel koordinat (satu titik per baris: lintang,bujur)</label>
+  <textarea id="paste" rows="3" placeholder="-6.2000,106.8200&#10;-6.1990,106.8210"></textarea>
+  <div class="btns"><button class="ghost" id="bPaste">Pakai koordinat</button></div>
+  <label style="font-size:14px;color:#9cc4ae">Cari tujuan online (butuh internet bebas)</label>
+  <input type="text" id="dest" placeholder="Nama tempat, atau lintang,bujur">
+  <div class="btns"><button class="ghost" id="bDest">Hitung rute dari posisi saya</button></div>
+  <h2 style="margin-top:6px">SIMULASI</h2>
+  <div class="row"><label>Simulasi berkendara di rute<small>Untuk mencoba tanpa GPS.</small></label><input type="checkbox" id="optSim"></div>
+  <div class="row"><label>Kecepatan simulasi <b id="simv">50</b> km/j</label><input type="range" id="optSimV" min="15" max="110" value="50"></div>
+  <div class="row"><label id="gpsStat">GPS: belum aktif</label></div>
+  <button class="cta" id="close" style="align-self:center;margin-top:6px">TUTUP</button>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),rad=Math.PI/180,sgn=v=>v<0?-1:1;
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const cv=$('c'),g=cv.getContext('2d');
+let W,H,DPR;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=Math.floor(W*DPR);cv.height=Math.floor(H*DPR)}
+addEventListener('resize',resize);resize();
+const msg=s=>{const m=$('msg');m.textContent=s;m.classList.add('on');clearTimeout(msg.t);msg.t=setTimeout(()=>m.classList.remove('on'),3800)};
+
+/* ---------- Pengaturan ---------- */
+const COLORS=['#5dff9a','#4fe8ff','#ffc247','#ffffff'];
+const OPT=Object.assign({mirror:false,map:true,voice:true,color:0,bri:100,wake:true},store.get('hud_opt',{}));
+function applyOpt(){
+  document.documentElement.style.setProperty('--hud',COLORS[OPT.color]);
+  cv.style.filter='brightness('+OPT.bri/100+')';
+  $('optMirror').checked=OPT.mirror;$('optMap').checked=OPT.map;$('optVoice').checked=OPT.voice;$('optBri').value=OPT.bri;$('optWake').checked=OPT.wake;
+  document.querySelectorAll('#sw i').forEach((e,i)=>e.classList.toggle('on',i===OPT.color));
+  store.set('hud_opt',OPT);
+}
+COLORS.forEach((c,i)=>{const e=document.createElement('i');e.style.background=c;e.onclick=()=>{OPT.color=i;applyOpt()};$('sw').appendChild(e)});
+$('optMirror').onchange=e=>{OPT.mirror=e.target.checked;applyOpt()};
+$('optMap').onchange=e=>{OPT.map=e.target.checked;applyOpt()};
+$('optVoice').onchange=e=>{OPT.voice=e.target.checked;applyOpt()};
+$('optBri').oninput=e=>{OPT.bri=+e.target.value;applyOpt()};
+$('optWake').onchange=e=>{OPT.wake=e.target.checked;applyOpt();wake()};
+applyOpt();
+$('gear').onclick=()=>{$('panel').hidden=false};
+$('close').onclick=()=>{$('panel').hidden=true};
+
+/* ---------- Geometri (bidang datar di sekitar titik asal) ---------- */
+let ORG=null;
+const toXY=(lat,lon,o=ORG)=>[(lon-o[1])*Math.cos(o[0]*rad)*111320,(lat-o[0])*110574];
+const toLL=(x,y,o=ORG)=>[o[0]+y/110574,o[1]+x/(Math.cos(o[0]*rad)*111320)];
+const bearingXY=(a,b)=>((Math.atan2(b[0]-a[0],b[1]-a[1])/rad)+360)%360;
+const wrap180=a=>{a%=360;if(a>180)a-=360;if(a<-180)a+=360;return a};
+const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+
+/* ---------- Rute ---------- */
+let ROUTE=null,idxHint=0;
+function resample(pts,step){
+  const out=[pts[0]];let carry=0;
+  for(let i=1;i<pts.length;i++){
+    const a=pts[i-1],b=pts[i],L=dist(a,b);if(L<1e-6)continue;
+    let d=step-carry;
+    while(d<=L){const t=d/L;out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]);d+=step}
+    carry=L-(d-step);
+  }
+  const last=pts[pts.length-1];if(dist(out[out.length-1],last)>1)out.push(last);
+  return out;
+}
+function roundCorners(p,r){
+  const out=[p[0]];
+  for(let i=1;i<p.length-1;i++){
+    const a=p[i-1],b=p[i],c=p[i+1],l1=dist(a,b),l2=dist(b,c),rr=Math.min(r,l1*.45,l2*.45);
+    const p1=[b[0]+(a[0]-b[0])*rr/l1,b[1]+(a[1]-b[1])*rr/l1],p2=[b[0]+(c[0]-b[0])*rr/l2,b[1]+(c[1]-b[1])*rr/l2];
+    for(let t=0;t<=1.001;t+=.125){const u=1-t;out.push([u*u*p1[0]+2*u*t*b[0]+t*t*p2[0],u*u*p1[1]+2*u*t*b[1]+t*t*p2[1]])}
+  }
+  out.push(p[p.length-1]);return out;
+}
+function pointAt(s){
+  const C=ROUTE.cum,P=ROUTE.xy;if(s<=0)return P[0];if(s>=ROUTE.len)return P[P.length-1];
+  let lo=0,hi=C.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(C[m]<=s)lo=m;else hi=m}
+  const t=(s-C[lo])/(C[hi]-C[lo]||1);return[P[lo][0]+(P[hi][0]-P[lo][0])*t,P[lo][1]+(P[hi][1]-P[lo][1])*t];
+}
+function setRouteXY(xy,org,name){
+  ORG=org;xy=resample(xy,6);
+  const cum=[0];for(let i=1;i<xy.length;i++)cum.push(cum[i-1]+dist(xy[i-1],xy[i]));
+  ROUTE={xy,cum,len:cum[cum.length-1],name:name||'Rute',turns:[]};
+  ROUTE.turns=extractTurns();idxHint=0;PROG={s:0,d:0};SIM.s=0;spoke.clear();
+  if(LL)fixLL(LL.lat,LL.lon,LL.speed,LL.heading,true);
+  msg('Rute dimuat: '+fmtDist(ROUTE.len)+', '+ROUTE.turns.length+' belokan');
+}
+function setRouteLL(pts,name){
+  if(pts.length<2){msg('Rute butuh minimal 2 titik');return false}
+  const org=pts[0],xy=pts.map(p=>toXY(p[0],p[1],org));setRouteXY(xy,org,name);return true;
+}
+function extractTurns(){
+  const T=[],len=ROUTE.len,cand=[];
+  for(let s=45;s<len-30;s+=5){
+    const b1=bearingXY(pointAt(s-40),pointAt(s-12)),b2=bearingXY(pointAt(s+12),pointAt(s+40));
+    cand.push({s,d:wrap180(b2-b1)});
+  }
+  let i=0;
+  while(i<cand.length){
+    if(Math.abs(cand[i].d)<22){i++;continue}
+    let j=i,best=cand[i];
+    while(j<cand.length&&Math.abs(cand[j].d)>=18){if(Math.abs(cand[j].d)>Math.abs(best.d))best=cand[j];j++}
+    T.push({s:best.s,d:best.d});i=j;
+  }
+  /* gabungkan belokan yang sangat berdekatan dengan arah sama */
+  const M=[];for(const t of T){const l=M[M.length-1];if(l&&t.s-l.s<40&&Math.sign(l.d)===Math.sign(t.d)){l.d+=t.d;l.s=(l.s+t.s)/2}else M.push(t)}
+  return M;
+}
+const turnWord=d=>{const a=Math.abs(d),side=d>0?'kanan':'kiri';if(a>160)return'putar balik';if(a>110)return'belok tajam ke '+side;if(a>50)return'belok '+side;return'serong '+side};
+function fmtDist(m){if(m>=1000)return(m/1000).toFixed(m>=10000?0:1).replace('.',',')+' km';if(m>=200)return Math.round(m/10)*10+' m';return Math.max(0,Math.round(m/5)*5)+' m'}
+
+/* ---------- Rute demo ---------- */
+function demoRoute(){
+  const w=[[0,0],[0,300],[250,300],[250,620],[520,620],[560,700],[760,720],[760,1000],[480,1020],[480,1250],[220,1250],[200,1560]];
+  setRouteXY(roundCorners(w,28),[-6.2,106.82],'Rute demo');
+}
+
+/* ---------- Posisi, GPS, simulasi ---------- */
+const POS={x:0,y:0,vx:0,vy:0,t:0,speed:0,heading:0,has:false,vis:[0,0],h:0};
+let LL=null,PROG={s:0,d:0},gpsOn=false,watchId=null,lastXY=null,lastT=0;
+const SIM={on:false,s:0,v:50/3.6};
+function fixXY(x,y,speed,heading,t){
+  const now=t||performance.now();
+  if(lastXY&&now>lastT){const dt=(now-lastT)/1000,d=dist([x,y],lastXY);if(speed==null||isNaN(speed))speed=d/dt;if((heading==null||isNaN(heading))&&d>2)heading=bearingXY(lastXY,[x,y])}
+  lastXY=[x,y];lastT=now;
+  speed=Math.max(0,speed||0);
+  if(heading!=null&&!isNaN(heading)&&speed>1.2)POS.heading=heading;
+  POS.x=x;POS.y=y;POS.speed=speed;POS.t=now;POS.vx=Math.sin(POS.heading*rad)*speed;POS.vy=Math.cos(POS.heading*rad)*speed;
+  if(!POS.has){POS.has=true;POS.vis=[x,y]}
+}
+function fixLL(lat,lon,speed,heading,reproj){
+  LL={lat,lon,speed,heading};
+  if(!ORG)ORG=[lat,lon];
+  const p=toXY(lat,lon);fixXY(p[0],p[1],speed,heading);
+}
+function startGPS(){
+  if(!navigator.geolocation){$('gpsStat').textContent='GPS: tidak didukung perangkat ini';msg('GPS tidak didukung. Pakai mode demo.');return}
+  if(watchId!=null)return;
+  $('gpsStat').textContent='GPS: menunggu sinyal...';
+  watchId=navigator.geolocation.watchPosition(p=>{
+    gpsOn=true;const c=p.coords;$('gpsStat').textContent='GPS aktif, akurasi '+Math.round(c.accuracy)+' m';
+    if(!SIM.on)fixLL(c.latitude,c.longitude,c.speed,c.heading);
+  },e=>{
+    gpsOn=false;const t=e.code===1?'izin lokasi ditolak':e.code===2?'posisi tidak tersedia':'waktu habis';
+    $('gpsStat').textContent='GPS: '+t;msg('GPS: '+t+'. Anda bisa memakai mode demo.');
+  },{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+}
+let lock=null;
+async function wake(){try{if(OPT.wake&&'wakeLock'in navigator&&!lock){lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>{lock=null})}else if(!OPT.wake&&lock){lock.release();lock=null}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)wake()});
+function setSim(on){
+  SIM.on=on;$('optSim').checked=on;
+  if(on){if(!ROUTE)demoRoute();SIM.s=PROG.s||0;POS.has=false;lastXY=null}
+}
+$('optSim').onchange=e=>setSim(e.target.checked);
+$('optSimV').oninput=e=>{SIM.v=+e.target.value/3.6;$('simv').textContent=e.target.value};
+
+/* ---------- Kemajuan di rute ---------- */
+function project(x,y){
+  const P=ROUTE.xy,C=ROUTE.cum,n=P.length;
+  const scan=(a,b)=>{let best=1e12,bs=0,bi=a;
+    for(let i=Math.max(0,a);i<Math.min(n-1,b);i++){
+      const ax=P[i][0],ay=P[i][1],dx=P[i+1][0]-ax,dy=P[i+1][1]-ay,L2=dx*dx+dy*dy||1,t=clamp(((x-ax)*dx+(y-ay)*dy)/L2,0,1),px=ax+dx*t,py=ay+dy*t,d=Math.hypot(x-px,y-py);
+      if(d<best){best=d;bs=C[i]+Math.sqrt(L2)*t;bi=i}}
+    return{d:best,s:bs,i:bi}};
+  let r=scan(idxHint-10,idxHint+80);
+  if(r.d>120)r=scan(0,n-1);
+  idxHint=r.i;return r;
+}
+const spoke=new Set();
+function speak(t){
+  if(!OPT.voice||!('speechSynthesis'in window))return;
+  try{const u=new SpeechSynthesisUtterance(t);u.lang='id-ID';u.rate=1;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}
+}
+let off=false,avgV=11;
+function navUpdate(dt){
+  if(SIM.on&&ROUTE){
+    SIM.s=Math.min(ROUTE.len,SIM.s+SIM.v*dt);
+    const a=pointAt(SIM.s),b=pointAt(Math.min(ROUTE.len,SIM.s+8)),c=pointAt(Math.max(0,SIM.s-8));
+    const hd=bearingXY(c,b);fixXY(a[0],a[1],SIM.v,hd,performance.now());POS.heading=hd;
+    $('gpsStat').textContent='Simulasi berjalan';
+  }
+  if(!POS.has)return;
+  /* pantulan halus antara dua pembaruan GPS */
+  const age=clamp((performance.now()-POS.t)/1000,0,2.5),tx=POS.x+POS.vx*age,ty=POS.y+POS.vy*age;
+  POS.vis[0]+=(tx-POS.vis[0])*Math.min(1,dt*7);POS.vis[1]+=(ty-POS.vis[1])*Math.min(1,dt*7);
+  POS.h+=wrap180(POS.heading-POS.h)*Math.min(1,dt*5);
+  avgV+=(Math.max(POS.speed,2)-avgV)*Math.min(1,dt*.15);
+  if(!ROUTE)return;
+  const r=project(POS.vis[0],POS.vis[1]);PROG={s:r.s,d:r.d};
+  const wasOff=off;off=r.d>70;if(off&&!wasOff){speak('Keluar jalur rute');msg('Keluar dari rute')}
+  const rem=ROUTE.len-r.s;
+  if(rem<25&&!spoke.has('arr')){spoke.add('arr');speak('Anda telah tiba di tujuan')}
+  const nt=nextTurns();
+  if(nt[0]&&!off){const dd=nt[0].s-r.s,key=nt[0].s|0;
+    for(const th of [450,180,45]){if(dd<th&&dd>th-90&&!spoke.has(key+':'+th)){spoke.add(key+':'+th);speak(th>100?'Dalam '+fmtDist(th)+', '+turnWord(nt[0].d):turnWord(nt[0].d)+' sekarang');break}}}
+}
+function nextTurns(){const s=PROG.s,o=[];for(const t of ROUTE.turns)if(t.s>s+8){o.push(t);if(o.length>=2)break}return o}
+
+/* ---------- Gambar ---------- */
+const hudColor=()=>COLORS[OPT.color];
+function glow(c,b){g.shadowColor=c;g.shadowBlur=b}
+function arrow(cx,cy,sz,delta,col,lw){
+  g.save();g.translate(cx,cy);g.strokeStyle=col;g.fillStyle=col;g.lineWidth=lw;g.lineCap='round';g.lineJoin='round';
+  const a=delta*rad;
+  if(Math.abs(delta)>155){
+    const sd=delta>0?1:-1;
+    g.beginPath();g.moveTo(-sd*sz*.2,sz*.42);g.lineTo(-sd*sz*.2,-sz*.02);g.arc(0,-sz*.02,sz*.2,Math.PI,0,sd<0);g.lineTo(sd*sz*.2,sz*.22);g.stroke();
+    g.beginPath();g.moveTo(sd*sz*.2,sz*.42);g.lineTo(sd*sz*.2-sz*.13,sz*.2);g.lineTo(sd*sz*.2+sz*.13,sz*.2);g.closePath();g.fill();
+  }else{
+    const ex=0,ey=-sz*.02,tx=ex+Math.sin(a)*sz*.46,ty=ey-Math.cos(a)*sz*.46;
+    g.beginPath();g.moveTo(0,sz*.44);g.lineTo(ex,ey);g.lineTo(tx-Math.sin(a)*sz*.1,ty+Math.cos(a)*sz*.1);g.stroke();
+    const ux=Math.sin(a),uy=-Math.cos(a),hx=sz*.17;
+    g.beginPath();g.moveTo(tx+ux*sz*.12,ty+uy*sz*.12);g.lineTo(tx-ux*sz*.06-uy*hx,ty-uy*sz*.06+ux*hx);g.lineTo(tx-ux*sz*.06+uy*hx,ty-uy*sz*.06-ux*hx);g.closePath();g.fill();
+  }
+  g.restore();
+}
+function pin(cx,cy,sz,col){g.save();g.translate(cx,cy);g.strokeStyle=col;g.fillStyle=col;g.lineWidth=sz*.06;g.beginPath();g.moveTo(-sz*.16,sz*.4);g.lineTo(-sz*.16,-sz*.4);g.stroke();g.beginPath();g.moveTo(-sz*.16,-sz*.4);g.lineTo(sz*.3,-sz*.28);g.lineTo(-sz*.16,-sz*.14);g.closePath();g.fill();g.restore()}
+function rrect(x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
+function compass(x,y,w,col){
+  const h=POS.h,ppd=w/90;
+  g.save();g.beginPath();g.rect(x,y-22,w,60);g.clip();
+  g.strokeStyle=col;g.fillStyle=col;g.lineWidth=2;g.textAlign='center';g.textBaseline='top';
+  for(let a=Math.floor((h-46)/5)*5;a<=h+46;a+=5){
+    const px=x+w/2+(a-h)*ppd,deg=((a%360)+360)%360,major=deg%10===0;
+    g.globalAlpha=1-Math.abs(a-h)/55;
+    g.beginPath();g.moveTo(px,y+22);g.lineTo(px,y+22-(major?12:6));g.stroke();
+    if(deg%30===0){const lab={0:'U',90:'T',180:'S',270:'B'}[deg]||String(deg).padStart(3,'0');g.font=(lab.length===1?'700 17px':'500 12px')+' system-ui,sans-serif';g.fillText(lab,px,y+25)}
+  }
+  g.restore();
+  g.save();g.fillStyle=col;g.beginPath();g.moveTo(x+w/2,y+22);g.lineTo(x+w/2-7,y+34);g.lineTo(x+w/2+7,y+34);g.closePath();g.fill();
+  g.font='700 18px system-ui,sans-serif';g.textAlign='center';g.textBaseline='bottom';g.fillText(String(Math.round(((POS.h%360)+360)%360)).padStart(3,'0')+'°',x+w/2,y+2);g.restore();
+}
+function tunnel(x,y,w,h,col){
+  /* jalur rute dalam perspektif, arah depan mengarah ke atas */
+  const hz=y+h*.08,base=y+h,cx=x+w/2,kx=w*.0105,look=420;
+  g.save();g.beginPath();g.rect(x,y,w,h);g.clip();
+  g.strokeStyle='rgba(120,140,255,.22)';g.lineWidth=1;
+  for(const d of [20,50,100,200,350]){const sp=1/(1+d/70),yy=hz+(base-hz)*sp;g.beginPath();g.moveTo(cx-w*.5*sp-12,yy);g.lineTo(cx+w*.5*sp+12,yy);g.stroke();g.fillStyle='rgba(150,170,255,.7)';g.font='11px system-ui,sans-serif';g.textAlign='left';g.fillText(d+' m',cx+w*.5*sp+14>x+w-44?x+w-44:cx+w*.5*sp+14,yy-3)}
+  g.strokeStyle=col;g.globalAlpha=.35;g.lineWidth=2;g.beginPath();g.moveTo(x,hz);g.lineTo(x+w,hz);g.stroke();g.globalAlpha=1;
+  if(ROUTE){
+    const pts=[],hd=POS.h*rad,sn=Math.sin(hd),cs=Math.cos(hd),px=POS.vis[0],py=POS.vis[1];
+    for(let s=Math.max(0,PROG.s-12);s<=Math.min(ROUTE.len,PROG.s+look);s+=7){
+      const p=pointAt(s),dx=p[0]-px,dy=p[1]-py,fw=dx*sn+dy*cs,rt=dx*cs-dy*sn;
+      if(fw<-20)continue;const sp=1/(1+Math.max(fw,-20)/70);
+      pts.push([cx+clamp(rt,-900,900)*kx*sp,hz+(base-hz)*sp,sp,fw]);
+    }
+    if(pts.length>1){
+      for(const [lw,c,a,bl] of [[1,'rgba(110,120,255,1)',.28,22],[.55,'rgba(140,150,255,1)',.9,12],[.2,'#fff',.9,0]]){
+        g.save();g.globalAlpha=a;g.strokeStyle=c;g.lineCap='round';g.lineJoin='round';g.shadowColor='rgba(120,130,255,.9)';g.shadowBlur=bl;
+        for(let i=1;i<pts.length;i++){g.lineWidth=(4+pts[i][2]*20)*lw;g.beginPath();g.moveTo(pts[i-1][0],pts[i-1][1]);g.lineTo(pts[i][0],pts[i][1]);g.stroke()}
+        g.restore();
+      }
+      const nt=nextTurns()[0];
+      if(nt){const p=pointAt(nt.s),dx=p[0]-px,dy=p[1]-py,fw=dx*sn+dy*cs,rt=dx*cs-dy*sn;if(fw>0&&fw<look){const sp=1/(1+fw/70),tx=cx+clamp(rt,-900,900)*kx*sp,ty=hz+(base-hz)*sp;g.save();g.fillStyle=col;glow(col,14);g.beginPath();g.arc(tx,ty,3+sp*9,0,7);g.fill();g.restore()}}
+    }
+  }
+  /* kendaraan */
+  g.save();g.fillStyle=col;glow(col,12);g.beginPath();g.moveTo(cx,base-22);g.lineTo(cx-11,base-2);g.lineTo(cx,base-8);g.lineTo(cx+11,base-2);g.closePath();g.fill();g.restore();
+  g.restore();
+}
+function drawHUD(x,y,w,h){
+  const col=hudColor(),land=w>h*1.1;
+  g.save();
+  if(OPT.mirror){g.translate(x+w/2,0);g.scale(-1,1);g.translate(-(x+w/2),0)}
+  g.fillStyle=col;g.strokeStyle=col;
+  glow(col,10);
+  compass(x+w*.1,y+6,w*.8,col);
+  const tn=ROUTE?nextTurns():[],t0=tn[0],t1=tn[1];
+  const px=land?x+w*.5:x+w*.5,py=land?y+h*.3:y+h*.25,sz=Math.min(w*.3,h*.2,150);
+  const rem=ROUTE?ROUTE.len-PROG.s:0;
+  if(!ROUTE){
+    g.textAlign='center';g.textBaseline='middle';g.font='700 '+sz*.26+'px system-ui,sans-serif';g.fillText('BELUM ADA RUTE',px,py-4);g.font='500 '+sz*.15+'px system-ui,sans-serif';g.globalAlpha=.75;g.fillText('Buka pengaturan, lalu pilih rute atau mode demo',px,py+sz*.28);g.globalAlpha=1;
+  }else if(off){
+    g.textAlign='center';g.textBaseline='middle';g.fillStyle='#ffb347';g.strokeStyle='#ffb347';glow('#ffb347',12);g.font='700 '+sz*.3+'px system-ui,sans-serif';g.fillText('KELUAR RUTE',px,py);g.font='500 '+sz*.16+'px system-ui,sans-serif';g.fillText('Kembali ke jalur atau hitung ulang',px,py+sz*.32);
+  }else{
+    const arr=rem<30||!t0;
+    /* ikon belokan berbingkai */
+    const bs=sz*1.05;g.save();g.lineWidth=4;rrect(px-bs/2,py-bs/2,bs,bs,bs*.16);g.stroke();g.restore();
+    if(arr&&rem<60)pin(px,py,bs,col);else if(t0)arrow(px,py,bs*.9,t0.d,col,bs*.075);else arrow(px,py,bs*.9,0,col,bs*.075);
+    g.textAlign='center';g.textBaseline='top';g.font='700 '+sz*.34+'px system-ui,sans-serif';
+    const dd=t0?t0.s-PROG.s:rem;g.fillText(rem<30?'TIBA':fmtDist(Math.max(0,dd)),px,py+bs/2+8);
+    g.font='500 '+sz*.15+'px system-ui,sans-serif';g.globalAlpha=.8;g.fillText(rem<30?'Anda sudah di tujuan':t0?turnWord(t0.d):'Lurus sampai tujuan',px,py+bs/2+8+sz*.38);g.globalAlpha=1;
+    if(t1){const sx=px+bs*.78,sy2=py-bs*.32,s2=bs*.34;g.save();g.lineWidth=2.4;rrect(sx-s2/2,sy2-s2/2,s2,s2,s2*.18);g.stroke();arrow(sx,sy2,s2*.9,t1.d,col,s2*.09);g.font='600 '+s2*.34+'px system-ui,sans-serif';g.textAlign='center';g.textBaseline='top';g.fillText(fmtDist(t1.s-t0.s),sx,sy2+s2/2+3);g.restore()}
+  }
+  /* jalur rute dalam perspektif */
+  const ty=land?y+h*.08:y+h*.5,th=land?h*.84:h*.32,tx=land?x+w*.62:x+w*.18,tw=land?w*.34:w*.64;
+  glow('rgba(120,130,255,.7)',6);tunnel(tx,ty,tw,th,col);glow(col,10);
+  /* kecepatan dan ETA */
+  const kmh=Math.round(POS.speed*3.6),by=land?y+h*.72:y+h*.84;
+  g.textBaseline='alphabetic';g.textAlign=land?'left':'center';
+  const sx=land?x+w*.06:x+w*.28;
+  g.font='700 '+Math.min(w*.2,h*.14,110)+'px system-ui,sans-serif';g.fillText(String(kmh),sx,by);
+  g.font='600 '+Math.min(w*.04,16)+'px system-ui,sans-serif';g.globalAlpha=.8;g.fillText('KM/J',sx,by+Math.min(w*.05,20));g.globalAlpha=1;
+  if(ROUTE){
+    const secs=rem/Math.max(avgV,5.5),eta=new Date(Date.now()+secs*1000),hh=String(eta.getHours()).padStart(2,'0'),mm=String(eta.getMinutes()).padStart(2,'0');
+    const rx=land?x+w*.28:x+w*.72;g.textAlign=land?'left':'center';
+    g.font='700 '+Math.min(w*.08,h*.06,44)+'px system-ui,sans-serif';g.fillText(hh+':'+mm,rx,by);
+    g.font='600 '+Math.min(w*.04,15)+'px system-ui,sans-serif';g.globalAlpha=.8;g.fillText('TIBA  '+Math.max(1,Math.round(secs/60))+' mnt  '+fmtDist(rem),rx,by+Math.min(w*.05,20));g.globalAlpha=1;
+  }
+  g.restore();
+}
+function drawMap(x,y,w,h){
+  const col=hudColor();
+  g.save();g.beginPath();rrect(x,y,w,h,16);g.clip();
+  g.fillStyle='#04100a';g.fillRect(x,y,w,h);
+  const cx=x+w/2,cy=y+h*.68,zoom=clamp(2.6-POS.speed*.03,1.2,3);
+  const hd=POS.h*rad,sn=Math.sin(hd),cs=Math.cos(hd),px=POS.vis[0],py=POS.vis[1],mpp=zoom*1.0;
+  const tr=(p)=>{const dx=p[0]-px,dy=p[1]-py;return[cx+(dx*cs-dy*sn)/mpp,cy-(dx*sn+dy*cs)/mpp]};
+  g.strokeStyle='rgba(93,255,154,.07)';g.lineWidth=1;
+  for(let i=-6;i<=6;i++){g.beginPath();g.moveTo(x,cy+i*40);g.lineTo(x+w,cy+i*40);g.stroke();g.beginPath();g.moveTo(cx+i*40,y);g.lineTo(cx+i*40,y+h);g.stroke()}
+  if(ROUTE){
+    const P=ROUTE.xy;let first=true;
+    for(const pass of [0,1]){
+      g.strokeStyle=pass?'rgba(120,135,255,.95)':'rgba(120,135,255,.25)';g.lineWidth=pass?5:3;g.lineJoin='round';g.lineCap='round';g.beginPath();first=true;
+      for(let i=0;i<P.length;i+=1){const inFut=ROUTE.cum[i]>=PROG.s-8;if(!!pass!==inFut)continue;const q=tr(P[i]);if(first){g.moveTo(q[0],q[1]);first=false}else g.lineTo(q[0],q[1])}
+      g.stroke();
+    }
+    const nt=nextTurns()[0];if(nt){const q=tr(pointAt(nt.s));g.fillStyle=col;g.beginPath();g.arc(q[0],q[1],5,0,7);g.fill()}
+    const e=tr(P[P.length-1]);g.fillStyle='#ff6a6a';g.beginPath();g.arc(e[0],e[1],6,0,7);g.fill();
+  }
+  g.fillStyle=col;glow(col,10);g.beginPath();g.moveTo(cx,cy-16);g.lineTo(cx-10,cy+10);g.lineTo(cx,cy+4);g.lineTo(cx+10,cy+10);g.closePath();g.fill();g.shadowBlur=0;
+  g.restore();
+  g.strokeStyle='rgba(93,255,154,.4)';g.lineWidth=1.5;rrect(x,y,w,h,16);g.stroke();
+}
+function draw(){
+  g.setTransform(DPR,0,0,DPR,0,0);g.fillStyle='#000';g.fillRect(0,0,W,H);
+  const sa=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('padding-top'))||0;
+  const land=W>H*1.1,mapOn=OPT.map&&!land,mh=mapOn?Math.min(H*.3,260):0;
+  if(land&&OPT.map){drawHUD(0,10,W*.74,H-20);drawMap(W*.77,H*.5-150,Math.min(W*.21,300),300<H?300:H*.6)}
+  else{drawHUD(0,sa+4,W,H-mh-14-sa);if(mapOn)drawMap(10,H-mh-8,W-20,mh)}
+  g.shadowBlur=0;
+}
+let last=performance.now();
+function frame(now){const dt=Math.min((now-last)/1000,.1);last=now;navUpdate(dt);draw();requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+
+/* ---------- Impor rute ---------- */
+function parseText(txt,name){
+  txt=txt.trim();
+  try{
+    if(txt.startsWith('<')){
+      const d=new DOMParser().parseFromString(txt,'application/xml');
+      let pts=[...d.querySelectorAll('rtept')].map(e=>[+e.getAttribute('lat'),+e.getAttribute('lon')]);
+      if(pts.length<2)pts=[...d.querySelectorAll('trkpt')].map(e=>[+e.getAttribute('lat'),+e.getAttribute('lon')]);
+      return pts;
+    }
+    if(txt.startsWith('{')||txt.startsWith('[')){
+      const j=JSON.parse(txt);let co=[];
+      const walk=o=>{if(!o)return;if(o.type==='FeatureCollection')o.features.forEach(walk);else if(o.type==='Feature')walk(o.geometry);else if(o.type==='LineString')co=co.concat(o.coordinates);else if(o.type==='MultiLineString')o.coordinates.forEach(c=>{co=co.concat(c)});else if(o.type==='GeometryCollection')o.geometries.forEach(walk)};
+      if(Array.isArray(j))co=j.map(p=>[p[1],p[0]]).map(p=>[p[1],p[0]]);else walk(j);
+      return co.map(c=>[c[1],c[0]]);
+    }
+  }catch(e){return[]}
+  return txt.split(/\n+/).map(l=>l.trim().split(/[\s,;]+/).map(Number)).filter(a=>a.length>=2&&!isNaN(a[0])&&!isNaN(a[1])).map(a=>[a[0],a[1]]);
+}
+$('bFile').onclick=()=>$('file').click();
+$('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;const pts=parseText(await f.text(),f.name);if(setRouteLL(pts,f.name))$('panel').hidden=true;else msg('File tidak berisi jalur yang bisa dibaca')};
+$('bPaste').onclick=()=>{const pts=parseText($('paste').value);if(setRouteLL(pts,'Koordinat'))$('panel').hidden=true;else msg('Koordinat tidak terbaca. Format: lintang,bujur per baris')};
+$('bDemoRoute').onclick=()=>{demoRoute();$('panel').hidden=true};
+$('bClear').onclick=()=>{ROUTE=null;PROG={s:0,d:0};msg('Rute dihapus')};
+$('bDest').onclick=async()=>{
+  const q=$('dest').value.trim();if(!q){msg('Isi tujuan dulu');return}
+  if(!LL&&!SIM.on){msg('Posisi Anda belum diketahui. Nyalakan GPS dulu.');return}
+  try{
+    let dest;const m=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if(m)dest=[+m[1],+m[2]];
+    else{const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));const j=await r.json();if(!j.length){msg('Tujuan tidak ditemukan');return}dest=[+j[0].lat,+j[0].lon]}
+    const from=LL?[LL.lat,LL.lon]:toLL(POS.x,POS.y);
+    const r=await fetch('https://router.project-osrm.org/route/v1/driving/'+from[1]+','+from[0]+';'+dest[1]+','+dest[0]+'?overview=full&geometries=geojson');
+    const j=await r.json();if(!j.routes||!j.routes[0]){msg('Rute tidak ditemukan');return}
+    setRouteLL(j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]),q);$('panel').hidden=true;
+  }catch(e){msg('Rute online tidak bisa diakses dari halaman ini. Pakai impor GPX atau koordinat.')}
+};
+
+/* ---------- Mulai ---------- */
+function begin(sim){
+  $('start').hidden=true;wake();
+  try{if('speechSynthesis'in window)speechSynthesis.getVoices()}catch(e){}
+  if(sim){setSim(true);msg('Mode demo: simulasi berkendara di rute contoh')}
+  else startGPS();
+}
+$('go').onclick=()=>begin(false);
+$('demo').onclick=()=>begin(true);
+</script>
+</body>
+</html>
